@@ -32,8 +32,8 @@ password: GFfK65EW785wzCKaAA
 
 This admin can only add other members. For other members option for adding the new member is denied
 
+The Document containng the screenshot of working of our web app:
 
+[Link to the document] (https://docs.google.com/document/d/1smrTt6Ve6gkgELVVycNe8l7_5XVGvNz2wMxkuc8dgmY/edit#)
 
-
-[Link to assignment 3 dbms](https://docs.google.com/document/d/18AjrnwYsm_yC_czwOWrr4RIQMEbOC0vJzNA7WBZaC5g/edit?usp=sharing)
 
