@@ -136,7 +136,6 @@
       {% for user in profile_details %}
       <!-- print(userDetails) -->
       <tr>
-
         <th scope="row" headers="aadhar">{{user['aadhar']}}</th>
         <td headers="name">{{user['name']}}</td>
         <td headers="dob">{{user['dob']}}</td>
@@ -149,6 +148,7 @@
         <td headers="age" style="display:none;">{{user['age']}}</td>
         <td headers="village" style="display:none;">{{user['village']}}</td>
         <td headers="pincode" style="display:none;">{{user['pincode']}}</td>
+        <td headers="photo" style="display:none;">{{user['photo']}}</td>
         <td headers="projects" style="display:none;">
           <table class="table">
             <thead>
@@ -440,7 +440,7 @@
   <div class="modal-dialog" role="document">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="profileModalLabel">Profile</h5>
+        <h5 class="modal-title" id="profileModalLabel">Profile chirag</h5>
         <button type="button" class="close" data-dismiss="modal" aria-label="Close">
           <span aria-hidden="true">&times;</span>
         </button>
@@ -458,7 +458,7 @@
             <p id="profile_employed">Employed: Yes</p>
             <p id="profile_dob">DOB: 10/10/1998</p>
             <p id="profile_age">Age: 25</p>
-            <p id="profile_aadhar">Aadhar: 123456789012</p>
+            <p id="profile_aadhar">Aadhar: 1756789012</p>
             <div>
               <p id="profile_village">Village Name: Basan</p>
               <p id="profile_pincode">Pin Code: 190009</p>
@@ -468,7 +468,7 @@
 
           </div>
           <div class="col-md-4">
-            <img src="https://via.placeholder.com/150" class="img-fluid">
+            <img src="https://via.placeholder.com/150" class="img-fluid" id="profile_photo">
           </div>
         </div>
       </div>
@@ -528,6 +528,8 @@
     let pincode = p.querySelector('td[headers="pincode"]').innerHTML;
     let age = p.querySelector('td[headers="age"]').innerHTML;
     let projects = p.querySelector('td[headers="projects"]').innerHTML;
+    let photo = p.querySelector('td[headers="photo"]').innerHTML;
+    console.log(photo);
 
     document.querySelector("#profile_name").textContent = "Name: " + name;
     document.querySelector("#profile_aadhar").textContent = "Aadhar Number: " + aadhar;
@@ -541,6 +543,7 @@
     document.querySelector("#profile_pincode").textContent = "Pincode: " + pincode;
     document.querySelector("#profile_age").textContent = "Age: " + age;
     document.querySelector("#profile_project_table").innerHTML = projects;
+    document.querySelector("#profile_photo").src = photo;
   }
 
 

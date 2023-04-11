@@ -5,7 +5,7 @@ Clone this project
 
 Run this on terminal
 ```bash
-pip3 install -r requirements.txt
+pip3 install -r requirement.txt
 ```
 Change the password in db.yaml to that of your MySQL's password
 

@@ -4,6 +4,7 @@ from flask_mysqldb import MySQL
 import yaml
 from email_script import send_email
 import secrets
+import os
 
 app = Flask(__name__)
 app.secret_key='secret_key'
@@ -16,6 +17,11 @@ app.config['MYSQL_PASSWORD'] = db['mysql_password']
 app.config['MYSQL_DB'] = db['mysql_db']
 
 mysql = MySQL(app)
+
+team_profile_pic_path = os.path.join('static', 'team_profile_photos')
+beneficiary_pic_path = os.path.join('static', 'beneficiary_photos')
+project_pic_path = os.path.join('static', 'project_photos')
+
 
 def if_admin():
     cursor = mysql.connection.cursor()
@@ -70,7 +76,7 @@ def log_out():
     session.pop('id', None)
     return redirect(url_for('login'))
 
-temp_id = 'E001'
+temp_id = '1'
 
 @app.route("/")
 def home():
@@ -120,10 +126,25 @@ def user_profile():
             'position': user[4],
             'join_date': user[5],
             'leave_date': user[6],
-            'reason': user[7]
+            'reason': user[7],
+            'photo_url': user[8]
         }
         profileDetails.append(user_profile)
+    
+    if profileDetails[0]['photo_url'] == None:
+        # all the images are jpg
+        img_path = url_for('static', filename=f'team_profile_photos/{profileDetails[0]["employ_id"]}.jpg')
+        cur.execute(f"UPDATE Teams SET profile_photo = \'{img_path}\' WHERE employee_id = \'{profileDetails[0]['employ_id']}\'")
+        mysql.connection.commit()
+        profileDetails[0]['photo_url'] = img_path
+    
+    # decode the byte format of the image
+    elif isinstance(profileDetails[0]['photo_url'], bytes):
+        profileDetails[0]['photo_url'] = profileDetails[0]['photo_url'].decode('utf-8')
 
+    
+    print(f"profile details: {profileDetails[0]}")
+    
     if (request.method == 'POST'):
         if request.form['signal'] == 'edit':
             print("edit of profile")
@@ -1205,6 +1226,27 @@ def user():
     for user in userDetails:
         user_profile = {'aadhar': user[0], 'name': user[1], 'dob': user[2], 'gender': user[3], 'martial': user[4],
                         'education': user[5], 'photo': user[6], 'employed': user[7], 'photo_caption': user[8]}
+    
+        # check for image
+        photo_name = str(user_profile["aadhar"]) + ".jpg"
+        print("photo name is ", photo_name)
+        if user_profile['photo'] == None:
+            location = os.path.join("static", "beneficiary_photos", photo_name)
+            print(f"locaiton in beneficiary {location}")
+            if os.path.isfile(location):
+                img_url = url_for('static', filename=f"beneficiary_photos/{photo_name}")
+                cur.execute(f"UPDATE Beneficiary SET photo = \'{img_url}\' WHERE aadhar_id = \'{user_profile['aadhar']}\'")
+                cur.connection.commit()
+                user_profile['photo'] = img_url
+            else:
+                img_url = url_for('static', filename=f"beneficiary_photos/default.jpg")
+                user_profile['photo'] = img_url
+        # decode the byte format of the image
+        elif isinstance(user_profile['photo'], bytes):
+            user_profile['photo'] = user_profile['photo'].decode('utf-8') 
+        print("user profile is ", user_profile['photo'])
+        
+        
         calculate_age_query = f"SELECT TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) FROM Beneficiary WHERE aadhar_id = \'{user[0]}\'"
         extract_village_query = f"SELECT pincode, name FROM VillageProfile WHERE pincode = (SELECT pincode FROM belongs WHERE aadhar_id = \'{user[0]}\')"
         extract_enrolled_projects_query = f"SELECT * FROM participants WHERE aadhar_id = \'{user[0]}\'"
@@ -1246,7 +1288,6 @@ def user():
             user_profile['phone'] = 'NA'
 
         profile_details.append(user_profile)
-
     # Generate projects list
     projects_query = f"SELECT event_name FROM Projects"
     projects_query = cur.execute(projects_query)
