@@ -1,18 +1,18 @@
 {% extends '/admin/dashboard.html'%}
 {% block content %}
 
-        {% with messages=get_flashed_messages() %}
-    {% if messages %}
-    {% for message in messages %}
-        <div class="alert alert-danger" role="alert">
-          {{ message }}
-        </div>
-    {% endfor %}
-    {% endif %}
-    {% endwith %}
+{% with messages=get_flashed_messages() %}
+{% if messages %}
+{% for message in messages %}
+<div class="alert alert-danger" role="alert">
+  {{ message }}
+</div>
+{% endfor %}
+{% endif %}
+{% endwith %}
 
 <!-- search option -->
-<div >
+<div>
   <h1>Beneficiary</h1>
   <div style="width:60%">
     <form name="searchForm" method="POST">
@@ -38,7 +38,7 @@
             <option value="Unmarried">Unmarried</option>
           </select>
         </div>
-        
+
         <div class="form-group my-1">
           <label for="id">Education</label>
           <select class="form-control" id="id" name="education">
@@ -179,6 +179,7 @@
           <button type="button" class="btn btn-success btn-sm" data-toggle="modal" data-target="#profileModal"
             onclick="show_profile(this)">Show Profile</button>
         </td>
+
       </tr>
       {% endfor %}
 
@@ -199,7 +200,7 @@
           </button>
         </div>
         <div class="modal-body">
-          <form name="editedDetails" method="POST">
+          <form name="editedDetails" method="POST" enctype="multipart/form-data">
 
             <input type="hidden" name="signal" value="edit">
             <div class="form-group">
@@ -271,6 +272,7 @@
                 <input type="number" class="form-control" id="project_year" name="project_year" placeholder="Year"
                   min="2008" />
               </div>
+
             </div>
 
             <div class="form-group">
@@ -286,6 +288,11 @@
             <div class="form-group">
               <label for="phone_number">Add phone number</label>
               <input type="text" class="form-control" id="education" name="phone_number">
+            </div>
+            <!-- Changing the profile pic -->
+            <div class="form-group my-1">
+              <label for="beneficiary_pic_edit">Beneficiary Photo</label>
+              <input type="file" class="form-control-file" id="beneficiary_pic_edit" name="beneficiary_photo" />
             </div>
 
             <div class="modal-footer">
@@ -311,7 +318,7 @@
           </button>
         </div>
         <div class="modal-body">
-          <form name="addDetails" method="POST">
+          <form name="addDetails" method="POST" enctype="multipart/form-data">
             <input type="hidden" name="signal" value="add">
 
             <div class="form-group">
@@ -322,7 +329,8 @@
 
             <div class="form-group">
               <label for="aadhar">Aadhar Id</label>
-              <input type="number" class="form-control" id="email" name="aadhar" min="100000000000" max="999999999999" required>
+              <input type="number" class="form-control" id="email" name="aadhar" min="100000000000" max="999999999999"
+                required>
             </div>
 
 
@@ -346,7 +354,6 @@
               <select class="form-control" id="genderSelect" name="martial">
                 <option value="Unmarried">Unmarried</option>
                 <option value="Married">Married</option>
-
               </select>
             </div>
 
@@ -377,7 +384,7 @@
                   {% endfor %}
                 </select>
                 <input type="number" class="form-control" id="project_year" name="project_year" placeholder="Year"
-                  min="2008" required/>
+                  min="2008" required />
               </div>
             </div>
 
@@ -393,6 +400,12 @@
             <div class="modal-footer">
               <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
               <button type="submit" class="btn btn-primary" id="saveChangesButton">Add</button>
+            </div>
+
+            <!-- Changing the profile pic -->
+            <div class="form-group my-1">
+              <label for="beneficiary_pic_add">Beneficiary Photo</label>
+              <input type="file" class="form-control-file" id="beneficiary_pic_add" name="beneficiary_photo_add" />
             </div>
 
           </form>
@@ -475,6 +488,8 @@
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
       </div>
+      
+
     </div>
   </div>
 </div>

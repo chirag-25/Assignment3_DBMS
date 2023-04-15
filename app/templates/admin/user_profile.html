@@ -29,10 +29,7 @@
         </div>
         <div class="col-md-4 border">
           <p> {{user['photo_url']}} </p>
-          <img src="{{user['photo_url']}}" alt="profile picture" class="img-fluid rounded" style="height: 100px;"/><br>
-          <button type="button">
-            <i class='bx bxs-edit'></i>
-          </button>
+          <img src="{{user['photo_url']}}" alt="profile picture" class="img-fluid rounded" style="height: 100px;" /><br>
         </div>
       </div>
     </div>
@@ -56,7 +53,7 @@
           </button>
         </div>
         <div class="modal-body">
-          <form name="editedDetails" method="POST">
+          <form name="editedDetails" method="POST" enctype="multipart/form-data">
             <input type="hidden" value="edit" name="signal" />
             <!-- employ id -->
             <div class="form-group my-1">
@@ -70,7 +67,7 @@
             </div>
 
             <!--  name -->
-            <div class="form- my-1">
+            <div class="form-group my-1">
               <label for="username_edit">Name</label>
               <input type="text" class="form-control" id="username_edit" name="username" />
             </div>
@@ -82,6 +79,12 @@
                             <input type="text" class="form-control" id="location_edit" name="location"  placeholder="Location" required />
 
                         </div> -->
+            
+            <!-- Changing the profile pic -->
+            <div class="form-group my-1">
+              <label for="profile_pic_edit">Profile Picture</label>
+              <input type="file" class="form-control-file" id="profile_pic_edit" name="profile_pic" />
+            </div>
 
             <!-- cancel and save changes-->
             <div class="modal-footer" style="margin-top: 20px;">

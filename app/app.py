@@ -1,13 +1,14 @@
 import MySQLdb
-from flask import Flask, render_template, request, redirect, url_for, flash, session
+from flask import Flask, render_template, request, redirect, url_for, flash, session, request
 from flask_mysqldb import MySQL
 import yaml
 from email_script import send_email
 import secrets
 import os
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.secret_key='secret_key'
+app.secret_key = 'secret_key'
 
 # Configure the database
 db = yaml.load(open('db.yaml'), Loader=yaml.Loader)
@@ -22,6 +23,8 @@ team_profile_pic_path = os.path.join('static', 'team_profile_photos')
 beneficiary_pic_path = os.path.join('static', 'beneficiary_photos')
 project_pic_path = os.path.join('static', 'project_photos')
 
+app.config["Upload"] = os.path.join("static", "uploads")
+
 
 def if_admin():
     cursor = mysql.connection.cursor()
@@ -31,6 +34,7 @@ def if_admin():
     if account:
         return True
     return False
+
 
 def restrict_child_routes():
     print("restrict_child_routes")
@@ -42,8 +46,9 @@ def restrict_child_routes():
     else:
         return 'No_access'
 
+
 def check_project_year_combination(project_name, year):
-    #check in projects whether the project name and year combination exists
+    # check in projects whether the project name and year combination exists
     cursor = mysql.connection.cursor()
     query = f"SELECT * FROM Projects WHERE event_name=\'{project_name}\' AND start_date IN (SELECT start_date FROM Projects WHERE YEAR(start_date)=\'{year}\')"
     exec_query = cursor.execute(query)
@@ -52,35 +57,31 @@ def check_project_year_combination(project_name, year):
         return True
     return False
 
-# @app.route("/admin")
-# def admin():
-#     if 'loggedin' in session and if_admin():
-#         return render_template("admin/dashboard.html",type="admin")
-#     elif('loggedin' in session ):
-#         return render_template("admin/dashboard.html",type="staff")
-#     else:
-#         return redirect(url_for('login'))
 
-def check_password(pass_word,id,table):
-    cursor=mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-    query="SELECT * FROM" +" "+table +" " + "WHERE EmployeeID="+str(id)
+def check_password(pass_word, id, table):
+    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    query = "SELECT * FROM" + " "+table + " " + "WHERE EmployeeID="+str(id)
     cursor.execute(query)
-    account=cursor.fetchone()
-    if(account):
-        if(account['EmployeePassword']==pass_word):
+    account = cursor.fetchone()
+    if (account):
+        if (account['EmployeePassword'] == pass_word):
             return True
     return False
+
 
 def log_out():
     session.pop('loggedin', None)
     session.pop('id', None)
     return redirect(url_for('login'))
 
+
 temp_id = '1'
+
 
 @app.route("/")
 def home():
     return render_template("home.html")
+
 
 @app.route("/login", methods=['GET', 'POST'])
 def login():
@@ -114,7 +115,8 @@ def user_profile():
     type = restrict_child_routes()
 
     cur = mysql.connection.cursor()
-    result_value = cur.execute(f"SELECT * FROM Teams where employee_id = \'{temp_id}\'")
+    result_value = cur.execute(
+        f"SELECT * FROM Teams where employee_id = \'{temp_id}\'")
     profileDetails = []
     if result_value == 1:
         user = cur.fetchall()[0]
@@ -130,36 +132,56 @@ def user_profile():
             'photo_url': user[8]
         }
         profileDetails.append(user_profile)
-    
+
+    photo_name = str(user_profile["employ_id"]) + ".jpg"
+    print(f'photo_name: {photo_name}')
+    print(f"potos url: {profileDetails[0]['photo_url']}")
     if profileDetails[0]['photo_url'] == None:
-        # all the images are jpg
-        img_path = url_for('static', filename=f'team_profile_photos/{profileDetails[0]["employ_id"]}.jpg')
-        cur.execute(f"UPDATE Teams SET profile_photo = \'{img_path}\' WHERE employee_id = \'{profileDetails[0]['employ_id']}\'")
-        mysql.connection.commit()
-        profileDetails[0]['photo_url'] = img_path
-    
+        location = os.path.join("static", "team_profile_photos", photo_name)
+        if os.path.isfile(location):
+            img_url = url_for(
+                'static', filename=f'team_profile_photos/{photo_name}')
+            cur.execute(
+                f"UPDATE Teams SET profile_photo = \'{img_url}\' WHERE employee_id = \'{profileDetails[0]['employ_id']}\'")
+            cur.connection.commit()
+            user_profile['photo_url'] = img_url
+        else:
+            img_url = url_for(
+                'static', filename=f'team_profile_photos/default.jpg')
+            user_profile['photo_url'] = img_url
     # decode the byte format of the image
     elif isinstance(profileDetails[0]['photo_url'], bytes):
-        profileDetails[0]['photo_url'] = profileDetails[0]['photo_url'].decode('utf-8')
+        profileDetails[0]['photo_url'] = profileDetails[0]['photo_url'].decode(
+            'utf-8')
 
-    
-    print(f"profile details: {profileDetails[0]}")
-    
     if (request.method == 'POST'):
         if request.form['signal'] == 'edit':
             print("edit of profile")
             username = request.form['username']
             email = request.form['email']
+            edit_query = f"UPDATE Teams SET name = \'{username}\', email_id = \'{email}\'"
             employ_id = temp_id
-            edit_query = f"UPDATE Teams SET name = \'{username}\', email_id = \'{email}\' WHERE employee_id = \'{employ_id}\'"
+            profile_pic_file = request.files['profile_pic']
+            # check if the post request has the file part
+            if profile_pic_file.filename != '':
+                profile_pic_file.save(os.path.join(
+                    team_profile_pic_path, photo_name))
+                img_url = url_for(
+                    'static', filename=f'team_profile_photos/{photo_name}')
+                edit_query = edit_query + f", profile_photo = \'{img_url}\'"
+
+            edit_query = edit_query + f" WHERE employee_id = \'{employ_id}\'"
+            # profile_pic_file.save(os.path.join("static", "team_profile_photos", profile_pic_file.filename))
             print(f"edit query: {edit_query}")
             exec_query = cur.execute(edit_query)
             mysql.connection.commit()
+            return redirect(url_for('user_profile'))
 
         elif request.form['signal'] == 'logout':
             return log_out()
 
     return render_template("admin/user_profile.html", profileDetails=profileDetails, type=type)
+
 
 @app.route("/admin/dashboard", methods=['POST', 'GET'])
 def dashboard():
@@ -170,6 +192,7 @@ def dashboard():
             return log_out()
 
     return render_template("admin/dashboard.html", type=type)
+
 
 @app.route("/admin/funding", methods=['POST', 'GET'])
 def funding():
@@ -286,7 +309,8 @@ def funding():
             funding_to = request.form['project']
 
             if check_project_year_combination(funding_to, year) == False:
-                flash(f"Project {funding_to} is not available for year {year}", 'danger')
+                flash(
+                    f"Project {funding_to} is not available for year {year}", 'danger')
                 return redirect('/admin/funding')
 
             add_query = f"INSERT INTO Funding (email_id, amount, funder_name, date) "
@@ -320,7 +344,8 @@ def funding():
             print(year)
             if project_name != '':
                 if check_project_year_combination(project_name, year) == False:
-                    flash(f"Project {project_name} is not available for year {year}", 'danger')
+                    flash(
+                        f"Project {project_name} is not available for year {year}", 'danger')
                     return redirect('/admin/funding')
 
             edit_query = f"UPDATE Funding "
@@ -331,14 +356,15 @@ def funding():
             mysql.connection.commit()
 
             if project_name != '':
-                #check if project is already defined for the user
+                # check if project is already defined for the user
                 check_query = f"SELECT * FROM Sponsors WHERE email_id = \'{email}\' AND event_name = \"{project_name}\" AND start_date IN (SELECT start_date FROM Projects WHERE event_name = \"{project_name}\" AND YEAR(start_date) = YEAR(\'{date}\'));"
                 exec_query = cur.execute(check_query)
                 check_result = cur.fetchall()
                 if len(check_result) == 0:
-                    #insert project
+                    # insert project
                     add_project_query = f"INSERT INTO Sponsors (email_id, event_name, start_date) "
-                    add_project_query = add_project_query + f"VALUES (\"{email}\", \"{project_name}\", (SELECT start_date FROM Projects WHERE event_name = \"{project_name}\" AND YEAR(start_date) = YEAR(\'{date}\')))"
+                    add_project_query = add_project_query + \
+                        f"VALUES (\"{email}\", \"{project_name}\", (SELECT start_date FROM Projects WHERE event_name = \"{project_name}\" AND YEAR(start_date) = YEAR(\'{date}\')))"
                     exec_query = cur.execute(add_project_query)
                     mysql.connection.commit()
 
@@ -662,7 +688,8 @@ def volunteers():
 
             # check if project is available for the year
             if check_project_year_combination(projectEventName, project_start_year) == False:
-                flash(f"Project {projectEventName} is not available for year {project_start_year}", 'danger')
+                flash(
+                    f"Project {projectEventName} is not available for year {project_start_year}", 'danger')
                 return redirect('/admin/volunteers')
 
             add_query = f"INSERT INTO Volunteers (email_id, name, phone_number, date_of_birth, gender) "
@@ -691,7 +718,8 @@ def volunteers():
 
             # check if project is available for the year
             if check_project_year_combination(projectEventName, project_start_year) == False:
-                flash(f"Project {projectEventName} is not available for year {project_start_year}", 'danger')
+                flash(
+                    f"Project {projectEventName} is not available for year {project_start_year}", 'danger')
                 return redirect('/admin/volunteers')
 
             edit_query = f"UPDATE Volunteers "
@@ -763,6 +791,7 @@ def projects():
     employee_ids = cur.fetchall()
 
     project_details = []
+    
     for project in projectDetails:
         project_profile = {'event_name': project[0], 'start_date': project[1], 'types': project[2],
                            'budget': project[3],
@@ -771,7 +800,31 @@ def projects():
 
         even_name = project_profile['event_name']
         start_date = project_profile['start_date']
-
+        
+        # images and caption
+        new_event_name = "_".join(even_name.split(" "))
+        # storing all the images as list of dictionaries in project_profile['images']
+        project_profile['images'] = []
+        # getting all the images of current project
+        img_res = cur.execute(f"SELECT * FROM projectphotos where project_event_name = \'{project_profile['event_name']}\' AND project_start_date = \'{project_profile['start_date']}\';")
+        if img_res > 0:
+            project_image_details = cur.fetchall()
+            
+            for image in project_image_details:
+                image_profile = {
+                    'img_id' : image[0],
+                    "image_event_name": image[1],
+                    "image_start_date": image[2],
+                    "image_url": image[3],
+                    "image_caption": image[4]
+                }
+                if type(image_profile['image_url']) == bytes:
+                    image_profile['image_url'] = image_profile['image_url'].decode('utf-8')
+                
+                project_profile['images'].append(image_profile)
+        
+        
+        
         extract_venue_id_query = f"SELECT venue_id FROM HeldAt WHERE event_name = \'{even_name}\' AND start_date = \'{start_date}\'"
         extract_beneficiaries_enrolled_query = f"SELECT name,aadhar_id FROM Beneficiary WHERE aadhar_id IN (SELECT aadhar_id FROM participants WHERE event_name = \'{even_name}\' AND start_date = \'{start_date}\')"
         extract_volunteers_enrolled_query = f"SELECT name,email_id FROM Volunteers WHERE email_id IN (SELECT email_id FROM volunteering WHERE event_name = \'{even_name}\' AND start_date = \'{start_date}\')"
@@ -903,79 +956,110 @@ def projects():
             collection = request.form['collection']
             expense = request.form['expense']
             Types = request.form['types']
+            project_photo_files = request.files.getlist('project_photo')
+            print(f"project photo files: {project_photo_files}")
 
-            venue_id = request.form['venue_id']
+            # loop through the list of files
+            new_event_name = "_".join(event_name.split(" ")) 
+            project_photo_folder_name = new_event_name + "_" + date[:4]
+            current_project_folder_path = os.path.join(
+                project_pic_path, project_photo_folder_name)
+            try:
+                number_of_images = len(os.listdir(current_project_folder_path))
+            except:
+                os.makedirs(current_project_folder_path, exist_ok=True)
+                number_of_images = len(os.listdir(current_project_folder_path))
+            img_url = []
+            
+            
+            ind = number_of_images + 1         
+            for file in project_photo_files:
+                current_photo_name =  str(ind) + '.jpg'
+                print(f"current photo name: {current_photo_name}")
+                ind = ind + 1
+                file.save(os.path.join(current_project_folder_path, current_photo_name))
+                img_url.append(url_for('static', filename = f"project_photo/{project_photo_folder_name}/{current_photo_name}"))
+                cur.execute(f"INSERT INTO ProjectPhotos (project_event_name, project_start_date, photo_url, caption)  VALUES (\'{event_name}\', \'{date}\', \'{img_url[-1]}\', \' {current_photo_name}\');")
+            print(f"img url: {img_url}")
+            
+            
+            venue_id=request.form['venue_id']
 
-            employee_id = request.form['employee_id']
-            employee_role = request.form['role']
+            employee_id=request.form['employee_id']
+            employee_role=request.form['role']
 
             # updated based on event_name and start_date
-            edit_query = f"UPDATE Projects "
-            edit_query = edit_query + \
+            edit_query=f"UPDATE Projects "
+            edit_query=edit_query + \
                 f"SET event_name = \'{event_name}\', start_date = \'{date}\', types = \'{Types}\', budget = \'{budget}\', no_of_participants = \'{participants}\', duration = \'{duration}\', collection = \'{collection}\', total_expense = \'{expense}\'"
-            edit_query = edit_query + \
+            edit_query=edit_query + \
                 f"WHERE event_name = \'{event_name}\' and start_date = \'{date}\';"
-            exec_query = cur.execute(edit_query)
+            exec_query=cur.execute(edit_query)
             mysql.connection.commit()
 
             if venue_id != '':
-                edit_venue_query = f"UPDATE HeldAt "
-                edit_venue_query = edit_venue_query + \
+                edit_venue_query=f"UPDATE HeldAt "
+                edit_venue_query=edit_venue_query + \
                     f"SET venue_id = \'{venue_id}\'"
-                edit_venue_query = edit_venue_query + \
+                edit_venue_query=edit_venue_query + \
                     f"WHERE event_name = \'{event_name}\' and start_date = \'{date}\';"
-                exec_query = cur.execute(edit_venue_query)
+                exec_query=cur.execute(edit_venue_query)
                 mysql.connection.commit()
 
             if employee_id != '':
-                check_query = f"SELECT * FROM Organize WHERE employee_id = \'{employee_id}\' AND event_name = \"{event_name}\" AND start_date = \'{date}\';"
-                exec_query = cur.execute(check_query)
-                check_result = cur.fetchall()
+                check_query=f"SELECT * FROM Organize WHERE employee_id = \'{employee_id}\' AND event_name = \"{event_name}\" AND start_date = \'{date}\';"
+                exec_query=cur.execute(check_query)
+                check_result=cur.fetchall()
                 if len(check_result) == 0:
-                    add_project_query = f"INSERT INTO Organize (employee_id, event_name, start_date, role) "
-                    add_project_query = add_project_query + f"VALUES (\'{employee_id}\', \"{event_name}\", \'{date}\', \'{employee_role}\');"
-                    exec_query = cur.execute(add_project_query)
+                    add_project_query=f"INSERT INTO Organize (employee_id, event_name, start_date, role) "
+                    add_project_query=add_project_query + \
+                        f"VALUES (\'{employee_id}\', \"{event_name}\", \'{date}\', \'{employee_role}\');"
+                    exec_query=cur.execute(add_project_query)
                     mysql.connection.commit()
 
             return redirect('/admin/projects')
 
         elif request.form['signal'] == 'addProject':
-            event_name = request.form['event_name']
-            date = request.form['date']
-            budget = request.form['budget']
-            participants = request.form['participants']
-            duration = request.form['duration']
-            collection = request.form['collection']
-            expense = request.form['expense']
-            Types = request.form['types']
+            event_name=request.form['event_name']
+            date=request.form['date']
+            budget=request.form['budget']
+            participants=request.form['participants']
+            duration=request.form['duration']
+            collection=request.form['collection']
+            expense=request.form['expense']
+            Types=request.form['types']
+            venue_id=request.form['venue_id']
 
-            venue_id = request.form['venue_id']
-
-            add_query = f"INSERT INTO Projects (event_name, start_date, types, budget, no_of_participants, duration, collection, total_expense) "
-            add_query = add_query + \
+            add_query=f"INSERT INTO Projects (event_name, start_date, types, budget, no_of_participants, duration, collection, total_expense) "
+            add_query=add_query + \
                 f"VALUES (\'{event_name}\', \'{date}\', \'{Types}\', \'{budget}\', \'{participants}\', \'{duration}\', \'{collection}\', \'{expense}\');"
-            exec_query = cur.execute(add_query)
+            exec_query=cur.execute(add_query)
             mysql.connection.commit()
-
+            
+            # making the folder for the project photos
+            new_event_name = "_".join(event_name.split(" ")) 
+            os.makedirs(os.path.join(project_pic_path, new_event_name + "_" + date[:4]), exist_ok=True)
+            
+             
             if venue_id != '':
-                # insert project in heldat
-                add_query = f"INSERT INTO HeldAt (venue_id, event_name, start_date) "
-                add_query = add_query + \
+                # insert project in held at
+                add_query=f"INSERT INTO HeldAt (venue_id, event_name, start_date) "
+                add_query=add_query + \
                     f"VALUES (\'{venue_id}\', \'{event_name}\', \'{date}\');"
-                exec_query = cur.execute(add_query)
+                exec_query=cur.execute(add_query)
                 mysql.connection.commit()
 
             return redirect('/admin/projects')
 
         # delete the user info
         elif request.form['signal'] == 'delete':
-            event_name = request.form['event_name']
-            start_date = request.form['date']
+            event_name=request.form['event_name']
+            start_date=request.form['date']
 
             # delete operation considering event_name and start_date
-            delete_query = f"DELETE FROM Projects WHERE event_name = \'{event_name}\' and start_date = \'{start_date}\';"
+            delete_query=f"DELETE FROM Projects WHERE event_name = \'{event_name}\' and start_date = \'{start_date}\';"
 
-            exec_query = cur.execute(delete_query)
+            exec_query=cur.execute(delete_query)
             mysql.connection.commit()
             return redirect('/admin/projects')
 
@@ -986,197 +1070,199 @@ def projects():
                            event_names=event_names, venue_ids=venue_ids, employee_ids=employee_ids)
 
 
-@app.route("/admin/trainers", methods=['GET', 'POST'])
+@ app.route("/admin/trainers", methods=['GET', 'POST'])
 def trainers():
-    type = restrict_child_routes()
+    type=restrict_child_routes()
     if type == 'No_access':
         return redirect(url_for('login'))
 
-    cur = mysql.connection.cursor()
-    result_value = cur.execute("SELECT * FROM Trainers")
+    cur=mysql.connection.cursor()
+    result_value=cur.execute("SELECT * FROM Trainers")
 
     if result_value > 0:
-        userDetails = cur.fetchall()
+        userDetails=cur.fetchall()
 
-    profile_details = []
+    profile_details=[]
     for user in userDetails:
         # Trainers(email_id, fee, name, age, gender)
-        user_profile = {'email_id': user[0], 'fee': user[1],
+        user_profile={'email_id': user[0], 'fee': user[1],
                         'name': user[2], 'age': user[3], 'gender': user[4]}
 
-        extract_phone_query = f"SELECT phone_number FROM TrainerPhoneEntity WHERE email_id = \'{user[0]}\'"
-        extract_projects_query = f"SELECT event_name,start_date FROM trains WHERE email_id = \'{user[0]}\'"
-        extract_beneficiaries_list_query = f"SELECT name, aadhar_id FROM Beneficiary WHERE aadhar_id IN (SELECT aadhar_id FROM TrainerBeneficiary WHERE email_id = \'{user[0]}\')"
+        extract_phone_query=f"SELECT phone_number FROM TrainerPhoneEntity WHERE email_id = \'{user[0]}\'"
+        extract_projects_query=f"SELECT event_name,start_date FROM trains WHERE email_id = \'{user[0]}\'"
+        extract_beneficiaries_list_query=f"SELECT name, aadhar_id FROM Beneficiary WHERE aadhar_id IN (SELECT aadhar_id FROM TrainerBeneficiary WHERE email_id = \'{user[0]}\')"
 
-        extract_phone_query = cur.execute(extract_phone_query)
-        extract_phone_query = cur.fetchall()
+        extract_phone_query=cur.execute(extract_phone_query)
+        extract_phone_query=cur.fetchall()
         if len(extract_phone_query) > 0:
-            user_profile['phone_number'] = extract_phone_query[0][0]
+            user_profile['phone_number']=extract_phone_query[0][0]
         else:
-            user_profile['phone_number'] = 'NA'
+            user_profile['phone_number']='NA'
 
-        extract_projects_query = cur.execute(extract_projects_query)
-        extract_projects_query = cur.fetchall()
+        extract_projects_query=cur.execute(extract_projects_query)
+        extract_projects_query=cur.fetchall()
         if len(extract_projects_query) > 0:
-            user_profile['projects'] = extract_projects_query
+            user_profile['projects']=extract_projects_query
         else:
-            user_profile['projects'] = ()
+            user_profile['projects']=()
 
-        extract_beneficiaries_list_query = cur.execute(
+        extract_beneficiaries_list_query=cur.execute(
             extract_beneficiaries_list_query)
-        extract_beneficiaries_list = cur.fetchall()
+        extract_beneficiaries_list=cur.fetchall()
         if len(extract_beneficiaries_list) > 0:
-            user_profile['beneficiaries'] = extract_beneficiaries_list
+            user_profile['beneficiaries']=extract_beneficiaries_list
         else:
-            user_profile['beneficiaries'] = ()
+            user_profile['beneficiaries']=()
 
         profile_details.append(user_profile)
 
     # Generate projects list
-    projects_query = f"SELECT event_name FROM Projects"
-    projects_query = cur.execute(projects_query)
-    projects = cur.fetchall()
+    projects_query=f"SELECT event_name FROM Projects"
+    projects_query=cur.execute(projects_query)
+    projects=cur.fetchall()
 
     # Adding trainers (done)
     if (request.method == 'POST'):
         if request.form['signal'] == 'search':
-            name = request.form['name']
-            email_id = request.form['email_id']
-            gender = request.form['gender']
-            min_fee = request.form['min_fee']
-            max_fee = request.form['max_fee']
-            min_age = request.form['min_age']
-            max_age = request.form['max_age']
+            name=request.form['name']
+            email_id=request.form['email_id']
+            gender=request.form['gender']
+            min_fee=request.form['min_fee']
+            max_fee=request.form['max_fee']
+            min_age=request.form['min_age']
+            max_age=request.form['max_age']
 
-            where_query = f"SELECT email_id FROM Trainers "
-            flag = False
+            where_query=f"SELECT email_id FROM Trainers "
+            flag=False
             if name != '':
                 if flag == False:
                     where_query += f"WHERE name = \"{name}\""
                 else:
                     where_query += f"name = \"{name}\""
-                flag = True
+                flag=True
 
             if email_id != '':
                 if flag == False:
                     where_query += f"WHERE email_id = \'{email_id}\'"
                 else:
                     where_query += f" AND email_id = \'{email_id}\'"
-                flag = True
+                flag=True
 
             if gender != '':
                 if flag == False:
                     where_query += f"WHERE gender = \'{gender}\'"
                 else:
                     where_query += f" AND gender = \'{gender}\'"
-                flag = True
+                flag=True
 
             if min_fee != '' and max_fee != '':
                 if flag == False:
                     where_query += f" WHERE fee BETWEEN \'{min_fee}\' AND \'{max_fee}\'"
                 else:
                     where_query += f" AND fee BETWEEN \'{min_fee}\' AND \'{max_fee}\'"
-                flag = True
+                flag=True
 
             if min_age != '' and max_age != '':
                 if flag == False:
                     where_query += f" WHERE age BETWEEN \'{min_age}\' AND \'{max_age}\'"
                 else:
                     where_query += f" AND age BETWEEN \'{min_age}\' AND \'{max_age}\'"
-                flag = True
+                flag=True
 
-            exec_query = cur.execute(where_query)
-            search_results = cur.fetchall()
+            exec_query=cur.execute(where_query)
+            search_results=cur.fetchall()
 
-            updated_profile_details = []
+            updated_profile_details=[]
             for user in profile_details:
                 for result in search_results:
                     if user['email_id'] == result[0]:
                         updated_profile_details.append(user)
-            profile_details = updated_profile_details
+            profile_details=updated_profile_details
 
             pass
         elif request.form['signal'] == 'addUser':
             print('add filled!@')
-            name = request.form['name']
-            email_id = request.form['email_id']
-            phoneNumber = request.form['phoneNumber']
-            gender = request.form['gender']
-            age = request.form['age']
-            fee = request.form['fee']
+            name=request.form['name']
+            email_id=request.form['email_id']
+            phoneNumber=request.form['phoneNumber']
+            gender=request.form['gender']
+            age=request.form['age']
+            fee=request.form['fee']
 
-            projectEventName = request.form['project_name']
-            project_start_year = request.form['project_year']
+            projectEventName=request.form['project_name']
+            project_start_year=request.form['project_year']
 
             # check if project year combination exists
             if check_project_year_combination(projectEventName, project_start_year) == False:
-                flash(f"Project {projectEventName} is not available for year {project_start_year}", 'danger')
+                flash(
+                    f"Project {projectEventName} is not available for year {project_start_year}", 'danger')
                 return redirect('/admin/trainers')
 
-            beneficiaryAadharId = request.form['beneficiaryAadharId']
-            beneficiaryName = request.form['beneficiaryName']
+            beneficiaryAadharId=request.form['beneficiaryAadharId']
+            beneficiaryName=request.form['beneficiaryName']
 
-            add_query = f"INSERT INTO Trainers (email_id, fee, name, age, gender) "
-            add_query = add_query + \
+            add_query=f"INSERT INTO Trainers (email_id, fee, name, age, gender) "
+            add_query=add_query + \
                 f"VALUES (\'{email_id}\', \'{fee}\', \'{name}\', \'{age}\', \'{gender}\')"
-            exec_query = cur.execute(add_query)
+            exec_query=cur.execute(add_query)
             mysql.connection.commit()
             print("Trainer added")
 
-            add_project_query = f"INSERT INTO trains (email_id, event_name, start_date) "
-            add_project_query = add_project_query + \
+            add_project_query=f"INSERT INTO trains (email_id, event_name, start_date) "
+            add_project_query=add_project_query + \
                 f"VALUES (\'{email_id}\', \"{projectEventName}\", (SELECT start_date FROM Projects WHERE event_name = \"{projectEventName}\" AND YEAR(start_date) = \'{project_start_year}\'))"
-            exec_query = cur.execute(add_project_query)
+            exec_query=cur.execute(add_project_query)
             mysql.connection.commit()
             print("Trainer added to project")
 
             if beneficiaryAadharId != '':
                 # Insert intoTrainerBeneficiary
-                add_beneficiary_query = f"INSERT INTO TrainerBeneficiary (email_id, aadhar_id) "
-                add_beneficiary_query = add_beneficiary_query + \
+                add_beneficiary_query=f"INSERT INTO TrainerBeneficiary (email_id, aadhar_id) "
+                add_beneficiary_query=add_beneficiary_query + \
                     f"VALUES (\'{email_id}\', \'{beneficiaryAadharId}\');"
-                exec_query = cur.execute(add_project_query)
+                exec_query=cur.execute(add_project_query)
                 mysql.connection.commit()
 
             return redirect('/admin/trainers')
 
         # editing trainers (done)
         elif request.form['signal'] == 'editUser':
-            name = request.form['name']
-            email_id = request.form['email_id']
-            phoneNumber = request.form['phoneNumber']
-            gender = request.form['gender']
-            age = request.form['age']
-            fee = request.form['fee']
+            name=request.form['name']
+            email_id=request.form['email_id']
+            phoneNumber=request.form['phoneNumber']
+            gender=request.form['gender']
+            age=request.form['age']
+            fee=request.form['fee']
 
-            projectEventName = request.form['project_name']
-            project_start_year = request.form['project_year']
+            projectEventName=request.form['project_name']
+            project_start_year=request.form['project_year']
 
             # check if project year combination exists
             if check_project_year_combination(projectEventName, project_start_year) == False:
-                flash(f"Project {projectEventName} is not available for year {project_start_year}", 'danger')
+                flash(
+                    f"Project {projectEventName} is not available for year {project_start_year}", 'danger')
                 return redirect('/admin/trainers')
 
-            beneficiaryAadharId = request.form['beneficiaryAadharId']
-            beneficiaryName = request.form['beneficiaryName']
+            beneficiaryAadharId=request.form['beneficiaryAadharId']
+            beneficiaryName=request.form['beneficiaryName']
 
             # updated based on email_id
-            edit_query = f"UPDATE Trainers "
-            edit_query = edit_query + \
+            edit_query=f"UPDATE Trainers "
+            edit_query=edit_query + \
                 f"SET email_id = \'{email_id}\', fee = \'{fee}\', name = \'{name}\', age = \'{age}\', gender = \'{gender}\'"
-            edit_query = edit_query + f"WHERE email_id = \'{email_id}\';"
-            exec_query = cur.execute(edit_query)
+            edit_query=edit_query + f"WHERE email_id = \'{email_id}\';"
+            exec_query=cur.execute(edit_query)
             mysql.connection.commit()
 
             # check if the email_id, project, date exists
-            check_query = f"SELECT * FROM trains WHERE email_id = \'{email_id}\' AND event_name = \"{projectEventName}\" AND start_date = (SELECT start_date FROM Projects WHERE event_name = \"{projectEventName}\" AND YEAR(start_date) = \'{project_start_year}\');"
-            exec_query = cur.execute(check_query)
-            check_result = cur.fetchall()
+            check_query=f"SELECT * FROM trains WHERE email_id = \'{email_id}\' AND event_name = \"{projectEventName}\" AND start_date = (SELECT start_date FROM Projects WHERE event_name = \"{projectEventName}\" AND YEAR(start_date) = \'{project_start_year}\');"
+            exec_query=cur.execute(check_query)
+            check_result=cur.fetchall()
             if len(check_result) == 0:
-                add_project_query = f"INSERT INTO trains (email_id, event_name, start_date) "
-                add_project_query = add_project_query + \
+                add_project_query=f"INSERT INTO trains (email_id, event_name, start_date) "
+                add_project_query=add_project_query + \
                     f"VALUES (\'{email_id}\', \"{projectEventName}\", (SELECT start_date FROM Projects WHERE event_name = \"{projectEventName}\" AND YEAR(start_date) = \'{project_start_year}\'))"
-                exec_query = cur.execute(add_project_query)
+                exec_query=cur.execute(add_project_query)
                 mysql.connection.commit()
                 print("Trainer added to project")
 
@@ -1192,14 +1278,14 @@ def trainers():
         # delete the trainer (done)
         elif request.form['signal'] == 'delete':
             print("delete filled!")
-            email_id = request.form['email_id']
+            email_id=request.form['email_id']
 
             # delete operation considering event_name and start_date
-            delete_query = f"DELETE FROM Trainers WHERE email_id = \'{email_id}\';"
+            delete_query=f"DELETE FROM Trainers WHERE email_id = \'{email_id}\';"
 
             print(delete_query)
 
-            exec_query = cur.execute(delete_query)
+            exec_query=cur.execute(delete_query)
             mysql.connection.commit()
             return redirect('/admin/trainers')
 
@@ -1209,172 +1295,174 @@ def trainers():
     return render_template("admin/trainers.html", profile_details=profile_details, projects=projects)
 
 
-@app.route("/admin/user", methods=['POST', 'GET'])
+@ app.route("/admin/user", methods=['POST', 'GET'])
 def user():
-    type = restrict_child_routes()
+    type=restrict_child_routes()
     if type == 'No_access':
         return redirect(url_for('login'))
 
-    cur = mysql.connection.cursor()
-    result_value = cur.execute("SELECT * FROM Beneficiary")
+    cur=mysql.connection.cursor()
+    result_value=cur.execute("SELECT * FROM Beneficiary")
 
     if result_value > 0:
-        userDetails = cur.fetchall()
+        userDetails=cur.fetchall()
 
     # Generate the user profile details
-    profile_details = []
+    profile_details=[]
     for user in userDetails:
-        user_profile = {'aadhar': user[0], 'name': user[1], 'dob': user[2], 'gender': user[3], 'martial': user[4],
+        user_profile={'aadhar': user[0], 'name': user[1], 'dob': user[2], 'gender': user[3], 'martial': user[4],
                         'education': user[5], 'photo': user[6], 'employed': user[7], 'photo_caption': user[8]}
-    
+
         # check for image
-        photo_name = str(user_profile["aadhar"]) + ".jpg"
-        print("photo name is ", photo_name)
+        photo_name=str(user_profile["aadhar"]) + ".jpg"
         if user_profile['photo'] == None:
-            location = os.path.join("static", "beneficiary_photos", photo_name)
-            print(f"locaiton in beneficiary {location}")
+            location=os.path.join("static", "beneficiary_photos", photo_name)
+            print(f"location in beneficiary {location}")
             if os.path.isfile(location):
-                img_url = url_for('static', filename=f"beneficiary_photos/{photo_name}")
-                cur.execute(f"UPDATE Beneficiary SET photo = \'{img_url}\' WHERE aadhar_id = \'{user_profile['aadhar']}\'")
+                img_url=url_for(
+                    'static', filename=f"beneficiary_photos/{photo_name}")
+                cur.execute(
+                    f"UPDATE Beneficiary SET photo = \'{img_url}\' WHERE aadhar_id = \'{user_profile['aadhar']}\'")
                 cur.connection.commit()
-                user_profile['photo'] = img_url
+                user_profile['photo']=img_url
             else:
-                img_url = url_for('static', filename=f"beneficiary_photos/default.jpg")
-                user_profile['photo'] = img_url
+                img_url=url_for(
+                    'static', filename=f"beneficiary_photos/default.jpg")
+                user_profile['photo']=img_url
         # decode the byte format of the image
         elif isinstance(user_profile['photo'], bytes):
-            user_profile['photo'] = user_profile['photo'].decode('utf-8') 
-        print("user profile is ", user_profile['photo'])
-        
-        
-        calculate_age_query = f"SELECT TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) FROM Beneficiary WHERE aadhar_id = \'{user[0]}\'"
-        extract_village_query = f"SELECT pincode, name FROM VillageProfile WHERE pincode = (SELECT pincode FROM belongs WHERE aadhar_id = \'{user[0]}\')"
-        extract_enrolled_projects_query = f"SELECT * FROM participants WHERE aadhar_id = \'{user[0]}\'"
-        extract_phone_query = f"SELECT phone_number FROM BeneficiaryPhoneEntity WHERE aadhar_id = \'{user[0]}\'"
+            user_profile['photo']=user_profile['photo'].decode('utf-8')
 
-        calculate_age = cur.execute(calculate_age_query)
-        calculate_age = cur.fetchall()
 
-        extract_village = cur.execute(extract_village_query)
-        extract_village = cur.fetchall()
 
-        extract_enrolled_projects = cur.execute(
+        calculate_age_query=f"SELECT TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) FROM Beneficiary WHERE aadhar_id = \'{user[0]}\'"
+        extract_village_query=f"SELECT pincode, name FROM VillageProfile WHERE pincode = (SELECT pincode FROM belongs WHERE aadhar_id = \'{user[0]}\')"
+        extract_enrolled_projects_query=f"SELECT * FROM participants WHERE aadhar_id = \'{user[0]}\'"
+        extract_phone_query=f"SELECT phone_number FROM BeneficiaryPhoneEntity WHERE aadhar_id = \'{user[0]}\'"
+
+        calculate_age=cur.execute(calculate_age_query)
+        calculate_age=cur.fetchall()
+
+        extract_village=cur.execute(extract_village_query)
+        extract_village=cur.fetchall()
+
+        extract_enrolled_projects=cur.execute(
             extract_enrolled_projects_query)
-        extract_enrolled_projects = cur.fetchall()
+        extract_enrolled_projects=cur.fetchall()
 
-        extract_phone = cur.execute(extract_phone_query)
-        extract_phone = cur.fetchall()
+        extract_phone=cur.execute(extract_phone_query)
+        extract_phone=cur.fetchall()
 
         if len(calculate_age) > 0:
-            user_profile['age'] = calculate_age[0][0]
+            user_profile['age']=calculate_age[0][0]
         else:
-            user_profile['age'] = 'NA'
+            user_profile['age']='NA'
 
         if len(extract_village) > 0:
-            user_profile['village'] = extract_village[0][1]
-            user_profile['pincode'] = extract_village[0][0]
+            user_profile['village']=extract_village[0][1]
+            user_profile['pincode']=extract_village[0][0]
         else:
-            user_profile['village'] = 'NA'
-            user_profile['pincode'] = 'NA'
+            user_profile['village']='NA'
+            user_profile['pincode']='NA'
 
         if len(extract_enrolled_projects) > 0:
-            user_profile['projects'] = extract_enrolled_projects
+            user_profile['projects']=extract_enrolled_projects
         else:
-            user_profile['projects'] = ()
+            user_profile['projects']=()
 
         if len(extract_phone) > 0:
-            user_profile['phone'] = extract_phone[0][0]
+            user_profile['phone']=extract_phone[0][0]
         else:
-            user_profile['phone'] = 'NA'
+            user_profile['phone']='NA'
 
         profile_details.append(user_profile)
     # Generate projects list
-    projects_query = f"SELECT event_name FROM Projects"
-    projects_query = cur.execute(projects_query)
-    projects = cur.fetchall()
+    projects_query=f"SELECT event_name FROM Projects"
+    projects_query=cur.execute(projects_query)
+    projects=cur.fetchall()
 
     # Generate village list
-    village_query = f"SELECT name FROM VillageProfile"
-    village_query = cur.execute(village_query)
-    villages = cur.fetchall()
+    village_query=f"SELECT name FROM VillageProfile"
+    village_query=cur.execute(village_query)
+    villages=cur.fetchall()
 
     # Generate education list
-    education_list_query = f"SELECT DISTINCT education FROM Beneficiary"
-    education_list_query_query = cur.execute(education_list_query)
-    education_list = cur.fetchall()
+    education_list_query=f"SELECT DISTINCT education FROM Beneficiary"
+    education_list_query_query=cur.execute(education_list_query)
+    education_list=cur.fetchall()
 
     if (request.method == 'POST'):
         if request.form['signal'] == 'search':
-            name = request.form['name']
-            aadhar = request.form['aadhar']
-            dob = request.form['dob']
-            age = request.form['age']
-            employed = request.form['employed']
-            gender = request.form['gender']
-            martial = request.form['martial']
-            education = request.form['education']
-            village = request.form['village']
-            project = request.form['project']
-            phone_number = request.form['phone_number']
+            name=request.form['name']
+            aadhar=request.form['aadhar']
+            dob=request.form['dob']
+            age=request.form['age']
+            employed=request.form['employed']
+            gender=request.form['gender']
+            martial=request.form['martial']
+            education=request.form['education']
+            village=request.form['village']
+            project=request.form['project']
+            phone_number=request.form['phone_number']
 
             # First extract all the beneficiaries from table Beneficiary
-            where_query = f"SELECT aadhar_id FROM Beneficiary "
-            flag = False
+            where_query=f"SELECT aadhar_id FROM Beneficiary "
+            flag=False
             if name != '':
                 if flag == False:
                     where_query += f"WHERE name = \"{name}\""
                 else:
                     where_query += f"name = \"{name}\""
-                flag = True
+                flag=True
 
             if aadhar != '':
                 if flag == False:
                     where_query += f"WHERE aadhar_id = \'{aadhar}\'"
                 else:
                     where_query += f" AND aadhar_id = \'{aadhar}\'"
-                flag = True
+                flag=True
 
             if dob != '':
                 if flag == False:
                     where_query += f"WHERE date_of_birth = \'{dob}\'"
                 else:
                     where_query += f" AND date_of_birth = \'{dob}\'"
-                flag = True
+                flag=True
 
             if age != '':
                 if flag == False:
                     where_query += f"WHERE TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) = \'{age}\'"
                 else:
                     where_query += f" AND TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) = \'{age}\'"
-                flag = True
+                flag=True
 
             if employed != '':
                 if flag == False:
                     where_query += f"WHERE employed = \'{employed}\'"
                 else:
                     where_query += f" AND employed = \'{employed}\'"
-                flag = True
+                flag=True
 
             if gender != '':
                 if flag == False:
                     where_query += f"WHERE gender = \'{gender}\'"
                 else:
                     where_query += f" AND gender = \'{gender}\'"
-                flag = True
+                flag=True
 
             if martial != '':
                 if flag == False:
                     where_query += f"WHERE marital_status = \'{martial}\'"
                 else:
                     where_query += f" AND marital_status = \'{martial}\'"
-                flag = True
+                flag=True
 
             if education != '':
                 if flag == False:
                     where_query += f"WHERE education = \'{education}\'"
                 else:
                     where_query += f" AND education = \'{education}\'"
-                flag = True
+                flag=True
 
             # Combine the results of the above query with the results of the village and project search
             if village != '':
@@ -1382,13 +1470,13 @@ def user():
                     where_query += f"WHERE aadhar_id IN (SELECT aadhar_id FROM belongs WHERE pincode = (SELECT pincode FROM VillageProfile WHERE name = \"{village}\"))"
                 else:
                     where_query += f" AND aadhar_id IN (SELECT aadhar_id FROM belongs WHERE pincode = (SELECT pincode FROM VillageProfile WHERE name = \"{village}\"))"
-                flag = True
+                flag=True
             if project != '':
                 if flag == False:
                     where_query += f"WHERE aadhar_id IN (SELECT aadhar_id FROM participants WHERE event_name = \"{project}\")"
                 else:
                     where_query += f" AND aadhar_id IN (SELECT aadhar_id FROM participants WHERE event_name = \"{project}\")"
-                flag = True
+                flag=True
 
             # Combine the results of the above query with the results of the phone number search
             if phone_number != '':
@@ -1396,124 +1484,157 @@ def user():
                     where_query += f"WHERE aadhar_id IN (SELECT aadhar_id FROM BeneficiaryPhoneEntity WHERE phone_number = \"{phone_number}\")"
                 else:
                     where_query += f" AND aadhar_id IN (SELECT aadhar_id FROM BeneficiaryPhoneEntity WHERE phone_number = \"{phone_number}\")"
-                flag = True
+                flag=True
 
-            exec_query = cur.execute(where_query)
-            search_results = cur.fetchall()
+            exec_query=cur.execute(where_query)
+            search_results=cur.fetchall()
 
-            updated_profile_details = []
+            updated_profile_details=[]
             for user in profile_details:
                 for result in search_results:
                     if user['aadhar'] == result[0]:
                         updated_profile_details.append(user)
-            profile_details = updated_profile_details
+            profile_details=updated_profile_details
 
         elif request.form['signal'] == 'add':
-            aadhar = request.form['aadhar']
-            name = request.form['name']
-            dob = request.form['dob']
-            education = request.form['education']
-            martial = request.form['martial']
-            gender = request.form['gender']
-            employed = request.form['employed']
-            phone_number = request.form['phone_number']
-            village = request.form['village']
+            aadhar=request.form['aadhar']
+            name=request.form['name']
+            dob=request.form['dob']
+            education=request.form['education']
+            martial=request.form['martial']
+            gender=request.form['gender']
+            employed=request.form['employed']
+            phone_number=request.form['phone_number']
+            village=request.form['village']
+            photo_name=f"{aadhar}.jpg"
+            beneficiary_photo=request.files['beneficiary_photo_add']
 
-            project = request.form['project_name']
-            project_start_year = request.form['project_year']
+
+
+            project=request.form['project_name']
+            project_start_year=request.form['project_year']
 
             # check if project is available for the year
             if check_project_year_combination(project, project_start_year) == False:
-                flash(f"Project {project} is not available for year {project_start_year}", 'danger')
+                flash(
+                    f"Project {project} is not available for year {project_start_year}", 'danger')
                 return redirect('/admin/user')
 
-            add_query = f"INSERT INTO Beneficiary (aadhar_id, name, date_of_birth, gender, marital_status, education, photo, employed, photo_caption) "
-            add_query = add_query + \
+            add_query=f"INSERT INTO Beneficiary (aadhar_id, name, date_of_birth, gender, marital_status, education, photo, employed, photo_caption) "
+            add_query=add_query + \
                 f"VALUES ({aadhar}, \"{name}\", \'{dob}\', \'{gender}\', \'{martial}\', \'{education}\', NULL, \"{employed}\", NULL)"
-            exec_query = cur.execute(add_query)
+            exec_query=cur.execute(add_query)
             mysql.connection.commit()
 
             # Add phone_number query
-            add_phone_query = f"INSERT INTO BeneficiaryPhoneEntity (aadhar_id, phone_number) "
-            add_phone_query = add_phone_query + \
+            add_phone_query=f"INSERT INTO BeneficiaryPhoneEntity (aadhar_id, phone_number) "
+            add_phone_query=add_phone_query + \
                 f"VALUES ({aadhar}, \"{phone_number}\")"
-            exec_query = cur.execute(add_phone_query)
+            exec_query=cur.execute(add_phone_query)
             mysql.connection.commit()
 
             # Add village query
-            add_village_query = f"INSERT INTO belongs (aadhar_id, pincode) "
-            add_village_query = add_village_query + \
+            add_village_query=f"INSERT INTO belongs (aadhar_id, pincode) "
+            add_village_query=add_village_query + \
                 f"VALUES ({aadhar}, (SELECT pincode FROM VillageProfile WHERE name = \"{village}\"))"
-            exec_query = cur.execute(add_village_query)
+            exec_query=cur.execute(add_village_query)
             mysql.connection.commit()
 
             # Add project query
-            add_project_query = f"INSERT INTO participants (aadhar_id, event_name, start_date) "
-            add_project_query = add_project_query + \
+            add_project_query=f"INSERT INTO participants (aadhar_id, event_name, start_date) "
+            add_project_query=add_project_query + \
                 f"VALUES ({aadhar}, \"{project}\", (SELECT start_date FROM Projects WHERE event_name = \"{project}\" AND YEAR(start_date) = \'{project_start_year}\'))"
-            exec_query = cur.execute(add_project_query)
+            exec_query=cur.execute(add_project_query)
             mysql.connection.commit()
+
+            if beneficiary_photo.filename != '':
+                beneficiary_photo.save(os.path.join(
+                    beneficiary_pic_path, photo_name))
+                img_url=url_for(
+                    'static', filename=f'beneficiary_photos/{photo_name}')
+                add_image_query=f"UPDATE Beneficiary SET photo = \"{img_url}\" WHERE aadhar_id = {aadhar}"
+                cur.execute(add_image_query)
+                mysql.connection.commit()
+
 
             return redirect('/admin/user')
 
         elif request.form['signal'] == 'edit':
-            aadhar = request.form['aadhar']
-            name = request.form['name']
-            dob = request.form['dob']
-            education = request.form['education']
-            martial = request.form['martial']
-            gender = request.form['gender']
-            employed = request.form['employed']
-            phone_number = request.form['phone_number']
-            village = request.form['village']
+            aadhar=request.form['aadhar']
+            name=request.form['name']
+            dob=request.form['dob']
+            education=request.form['education']
+            martial=request.form['martial']
+            gender=request.form['gender']
+            employed=request.form['employed']
+            phone_number=request.form['phone_number']
+            village=request.form['village']
+            beneficiary_pic_file=request.files['beneficiary_photo']
+            photo_name=f"{aadhar}.jpg"
 
-            project = request.form['project_name']
-            project_start_year = request.form['project_year']
+
+            project=request.form['project_name']
+            project_start_year=request.form['project_year']
 
             if project != '':
                 if check_project_year_combination(project, project_start_year) == False:
-                    flash(f"Project {project} is not available for year {project_start_year}", 'danger')
+                    flash(
+                        f"Project {project} is not available for year {project_start_year}", 'danger')
                     return redirect('/admin/user')
 
-            edit_query = f"UPDATE Beneficiary "
-            edit_query = edit_query + \
+            edit_query=f"UPDATE Beneficiary "
+            edit_query=edit_query + \
                 f"SET name = \'{name}\', date_of_birth = \'{dob}\', gender = \'{gender}\', marital_status = \'{martial}\', education = \'{education}\', photo = NULL, employed = \"{employed}\", photo_caption = NULL "
-            edit_query = edit_query + f"WHERE aadhar_id = {aadhar}"
-            exec_query = cur.execute(edit_query)
+            edit_query=edit_query + f"WHERE aadhar_id = {aadhar}"
+            exec_query=cur.execute(edit_query)
             mysql.connection.commit()
 
             # Update phone_number, village and project if provided
             if phone_number != '':
-                add_phone_query = f"INSERT INTO BeneficiaryPhoneEntity (aadhar_id, phone_number) "
-                add_phone_query = add_phone_query + \
+                add_phone_query=f"INSERT INTO BeneficiaryPhoneEntity (aadhar_id, phone_number) "
+                add_phone_query=add_phone_query + \
                     f"VALUES ({aadhar}, \"{phone_number}\")"
-                exec_query = cur.execute(add_phone_query)
+                exec_query=cur.execute(add_phone_query)
                 mysql.connection.commit()
 
             if village != '':
-                edit_village_query = f"UPDATE belongs "
-                edit_village_query = edit_village_query + \
+                edit_village_query=f"UPDATE belongs "
+                edit_village_query=edit_village_query + \
                     f"SET pincode = (SELECT pincode FROM VillageProfile WHERE name = \"{village}\") "
-                edit_village_query = edit_village_query + \
+                edit_village_query=edit_village_query + \
                     f"WHERE aadhar_id = {aadhar}"
-                exec_query = cur.execute(edit_village_query)
+                exec_query=cur.execute(edit_village_query)
                 mysql.connection.commit()
 
             if project != '':
-                add_project_query = f"INSERT INTO participants (aadhar_id, event_name, start_date) "
-                add_project_query = add_project_query + \
+                add_project_query=f"INSERT INTO participants (aadhar_id, event_name, start_date) "
+                add_project_query=add_project_query + \
                     f"VALUES ({aadhar}, \"{project}\", (SELECT start_date FROM Projects WHERE event_name = \"{project}\" AND YEAR(start_date) = \'{project_start_year}\'))"
-                exec_query = cur.execute(add_project_query)
+                exec_query=cur.execute(add_project_query)
+                mysql.connection.commit()
+
+            if beneficiary_pic_file.filename != '':
+                beneficiary_pic_file.save(os.path.join(
+                    beneficiary_pic_path, photo_name))
+                img_url=url_for(
+                    'static', filename=f'beneficiary_photos/{photo_name}')
+                edit_photo_query=f"UPDATE Beneficiary SET photo = \"{img_url}\" WHERE aadhar_id = {aadhar}"
+                cur.execute(edit_photo_query)
                 mysql.connection.commit()
 
             return redirect('/admin/user')
 
         elif request.form['signal'] == 'delete':
-            aadhar = request.form['aadhar']
-            delete_query = f"DELETE FROM Beneficiary WHERE aadhar_id = {aadhar}"
-
-            exec_query = cur.execute(delete_query)
+            aadhar=request.form['aadhar']
+            delete_query=f"DELETE FROM Beneficiary WHERE aadhar_id = {aadhar}"
+            exec_query=cur.execute(delete_query)
             mysql.connection.commit()
+            file_location=os.path.join(
+                'static', 'beneficiary_photos', f'{aadhar}.jpg')
+            # delete the file if it exists
+            if os.path.exists(file_location):
+                os.remove(file_location)
+
             return redirect('/admin/user')
 
         elif request.form['signal'] == 'logout':
@@ -1523,136 +1644,140 @@ def user():
     # return render_template('admin/user.html')
 
 
-@app.route('/admin/team', methods=['GET', 'POST'])
+@ app.route('/admin/team', methods=['GET', 'POST'])
 def team():
-    type = restrict_child_routes()
+    type=restrict_child_routes()
     if type == 'No_access':
         return redirect(url_for('login'))
 
-    cur = mysql.connection.cursor()
-    result_value = cur.execute("SELECT * FROM Teams")
+    cur=mysql.connection.cursor()
+    result_value=cur.execute("SELECT * FROM Teams")
 
     if result_value > 0:
-        teamdetails = cur.fetchall()
+        teamdetails=cur.fetchall()
 
-    position_name_query = f" SELECT DISTINCT position FROM Teams"
-    position_name_query_exec = cur.execute(position_name_query)
-    position_names = cur.fetchall()
+    position_name_query=f" SELECT DISTINCT position FROM Teams"
+    position_name_query_exec=cur.execute(position_name_query)
+    position_names=cur.fetchall()
 
-    project_name_query = f" SELECT DISTINCT event_name FROM Organize"
-    project_name_query_exec = cur.execute(project_name_query)
-    project_names = cur.fetchall()
+    project_name_query=f" SELECT DISTINCT event_name FROM Organize"
+    project_name_query_exec=cur.execute(project_name_query)
+    project_names=cur.fetchall()
 
-    team_details = []
+    team_details=[]
     for team in teamdetails:
-        team_profile = {'employee_id': team[0], 'name': team[1], 'email_id': team[2], 'salary': team[3],
+        team_profile={'employee_id': team[0], 'name': team[1], 'email_id': team[2], 'salary': team[3],
                         'position': team[4], 'year_of_joining': team[5], 'year_of_leaving': team[6],
                         'reason_of_leaving': team[7]}
 
         # extract_projects_role_date_query = f"SELECT event_name,start_date FROM Organize WHERE employee_id IN (SELECT employee_id FROM Organize WHERE event_name = \'{event_name}\' AND start_date = \'{start_date}\')"
-        extract_projects_role_date_query = f"SELECT event_name, start_date FROM Organize WHERE employee_id = \'{team_profile['employee_id']}\' "
-        extract_projects_role_date_query = cur.execute(extract_projects_role_date_query)
+        extract_projects_role_date_query=f"SELECT event_name, start_date FROM Organize WHERE employee_id = \'{team_profile['employee_id']}\' "
+        extract_projects_role_date_query=cur.execute(
+            extract_projects_role_date_query)
         print("Project query executed")
-        extract_projects_role_date = cur.fetchall()
+        extract_projects_role_date=cur.fetchall()
 
         print(len(extract_projects_role_date))
         if (len(extract_projects_role_date) > 0):
-            team_profile['Project_id'] = extract_projects_role_date
+            team_profile['Project_id']=extract_projects_role_date
         else:
-            team_profile['Project_id'] = ()
+            team_profile['Project_id']=()
 
         team_details.append(team_profile)
 
     if (request.method == 'POST'):
         if (request.form['signal'] == 'search'):
-            employee_id = request.form['employee_id']
-            name = request.form['name']
-            email = request.form['email']
-            min_amount = request.form['min_amount']
-            max_amount = request.form['max_amount']
-            position = request.form['position']
-            project_name = request.form['project_name']
+            employee_id=request.form['employee_id']
+            name=request.form['name']
+            email=request.form['email']
+            min_amount=request.form['min_amount']
+            max_amount=request.form['max_amount']
+            position=request.form['position']
+            project_name=request.form['project_name']
             # year = request.form['year']
 
-            where_query = f" SELECT * FROM Teams"
-            flag = False
+            where_query=f" SELECT * FROM Teams"
+            flag=False
 
             if (employee_id != ''):
                 if (flag == False):
-                    where_query = where_query + f" WHERE employee_id = \"{employee_id}\""
+                    where_query=where_query + \
+                        f" WHERE employee_id = \"{employee_id}\""
                 else:
-                    where_query = where_query + f" AND employee_id = \"{employee_id}\""
-                flag = True
+                    where_query=where_query + \
+                        f" AND employee_id = \"{employee_id}\""
+                flag=True
             if (name != ''):
                 if (flag == False):
-                    where_query = where_query + f" WHERE name = \"{name}\""
+                    where_query=where_query + f" WHERE name = \"{name}\""
                 else:
-                    where_query = where_query + f" AND name = \"{name}\""
-                flag = True
+                    where_query=where_query + f" AND name = \"{name}\""
+                flag=True
 
             if (email != ''):
                 if (flag == False):
-                    where_query = where_query + f" WHERE email_id = \"{email}\""
+                    where_query=where_query + f" WHERE email_id = \"{email}\""
                 else:
-                    where_query = where_query + f" AND email_id = \"{email}\""
-                flag = True
+                    where_query=where_query + f" AND email_id = \"{email}\""
+                flag=True
 
             if min_amount != '' and max_amount != '':
                 if flag == False:
                     where_query += f" WHERE salary BETWEEN \'{min_amount}\' AND \'{max_amount}\'"
                 else:
                     where_query += f" AND salary BETWEEN \'{min_amount}\' AND \'{max_amount}\'"
-                flag = True
+                flag=True
 
             if (position != ''):
                 if (flag == False):
-                    where_query = where_query + f" WHERE position = \"{position}\""
+                    where_query=where_query + \
+                        f" WHERE position = \"{position}\""
                 else:
-                    where_query = where_query + f" AND position = \"{position}\""
-                flag = True
+                    where_query=where_query + f" AND position = \"{position}\""
+                flag=True
 
             if project_name != '':
                 if flag == False:
                     where_query += f" WHERE employee_id IN (SELECT employee_id FROM Organize WHERE event_name = \"{project_name}\")"
                 else:
                     where_query += f" AND employee_id IN (SELECT employee_id FROM Organize WHERE event_name = \"{project_name}\")"
-                flag = True
+                flag=True
 
-            exec_query = cur.execute(where_query)
+            exec_query=cur.execute(where_query)
             print("Search query executed")
-            search_results = cur.fetchall()
+            search_results=cur.fetchall()
 
-            updated_team_details = []
+            updated_team_details=[]
             for user in team_details:
                 for result in search_results:
                     if user['employee_id'] == result[0]:
                         updated_team_details.append(user)
-            team_details = updated_team_details
+            team_details=updated_team_details
 
         elif (request.form['signal'] == 'add'):
-            name = request.form['name']
-            email = request.form['email']
-            salary = request.form['salary']
-            position = request.form['position']
-            hired_date = request.form['hired_date']
+            name=request.form['name']
+            email=request.form['email']
+            salary=request.form['salary']
+            position=request.form['position']
+            hired_date=request.form['hired_date']
 
-            count_till_now_query = f" SELECT COUNT(*) FROM Teams"
-            count_till_now_query = cur.execute(count_till_now_query)
-            count_till_now = cur.fetchone()
+            count_till_now_query=f" SELECT COUNT(*) FROM Teams"
+            count_till_now_query=cur.execute(count_till_now_query)
+            count_till_now=cur.fetchone()
             if len(count_till_now) > 0:
-                count_till_now = count_till_now[0]
+                count_till_now=count_till_now[0]
             else:
-                count_till_now = 0
+                count_till_now=0
 
-            add_member_query = f"INSERT INTO Teams (employee_id, name, email_id, salary, position, year_of_joining, year_of_leaving, reason_of_leaving) VALUES (\'{count_till_now + 1}\' , \'{name}\', \'{email}\', \'{salary}\', \'{position}\', \'{hired_date}\', NULL, NULL)"
-            add_member_query = cur.execute(add_member_query)
+            add_member_query=f"INSERT INTO Teams (employee_id, name, email_id, salary, position, year_of_joining, year_of_leaving, reason_of_leaving) VALUES (\'{count_till_now + 1}\' , \'{name}\', \'{email}\', \'{salary}\', \'{position}\', \'{hired_date}\', NULL, NULL)"
+            add_member_query=cur.execute(add_member_query)
             mysql.connection.commit()
 
             # add user to staff_table
-            password_length = 13
-            password = secrets.token_urlsafe(password_length)
-            add_staff_password_query = f"INSERT INTO staff_password (EmployeeID, EmployeePassword) VALUES (\'{count_till_now + 1}\', \'{password}\')"
-            add_staff_password_query = cur.execute(add_staff_password_query)
+            password_length=13
+            password=secrets.token_urlsafe(password_length)
+            add_staff_password_query=f"INSERT INTO staff_password (EmployeeID, EmployeePassword) VALUES (\'{count_till_now + 1}\', \'{password}\')"
+            add_staff_password_query=cur.execute(add_staff_password_query)
             mysql.connection.commit()
 
             # send email to user
@@ -1661,50 +1786,52 @@ def team():
             return redirect('/admin/team')
 
         elif (request.form['signal'] == 'edit'):
-            employee_id = request.form['employee_id']
-            name = request.form['name']
-            email = request.form['email']
-            salary = request.form['salary']
-            position = request.form['position']
-            hired_date = request.form['hired_in']
-            left_date = request.form['quit_in']
+            employee_id=request.form['employee_id']
+            name=request.form['name']
+            email=request.form['email']
+            salary=request.form['salary']
+            position=request.form['position']
+            hired_date=request.form['hired_in']
+            left_date=request.form['quit_in']
 
             if left_date == '':
-                left_date = 'NULL'
+                left_date='NULL'
 
-            project_name = request.form['project_name']
-            project_year = request.form['project_year']
-            project_role = request.form['role']
+            project_name=request.form['project_name']
+            project_year=request.form['project_year']
+            project_role=request.form['role']
 
-            print(f"Project name: {project_name}, Project year: {project_year}, Project role: {project_role}")
+            print(
+                f"Project name: {project_name}, Project year: {project_year}, Project role: {project_role}")
 
             if project_name != '':
                 if check_project_year_combination(project_name, project_year) == False:
-                    flash(f"Project {project_name} is not available for year {project_year}", 'danger')
+                    flash(
+                        f"Project {project_name} is not available for year {project_year}", 'danger')
                     return redirect('/admin/team')
 
-            update_team_query = f"UPDATE Teams SET name = \'{name}\', email_id = \'{email}\', salary = {salary}, position = \'{position}\', year_of_joining = \'{hired_date}\', year_of_leaving = {left_date} WHERE employee_id = \'{employee_id}\'"
+            update_team_query=f"UPDATE Teams SET name = \'{name}\', email_id = \'{email}\', salary = {salary}, position = \'{position}\', year_of_joining = \'{hired_date}\', year_of_leaving = {left_date} WHERE employee_id = \'{employee_id}\'"
             print(update_team_query)
-            update_team_query = cur.execute(update_team_query)
+            update_team_query=cur.execute(update_team_query)
             mysql.connection.commit()
 
             if project_name != '':
                 # check if the employee is already assigned to the project
-                check_query = f"SELECT * FROM Organize WHERE employee_id = \'{employee_id}\' AND event_name = \'{project_name}\' AND start_date IN (SELECT start_date FROM Projects WHERE event_name = \"{project_name}\" AND YEAR(start_date) = \'{project_year}\')"
-                check_query = cur.execute(check_query)
-                check_query = cur.fetchall()
+                check_query=f"SELECT * FROM Organize WHERE employee_id = \'{employee_id}\' AND event_name = \'{project_name}\' AND start_date IN (SELECT start_date FROM Projects WHERE event_name = \"{project_name}\" AND YEAR(start_date) = \'{project_year}\')"
+                check_query=cur.execute(check_query)
+                check_query=cur.fetchall()
                 if len(check_query) == 0:
-                    insert_query = f"INSERT INTO Organize (employee_id, event_name, start_date, role) "
+                    insert_query=f"INSERT INTO Organize (employee_id, event_name, start_date, role) "
                     insert_query += f"VALUES (\'{employee_id}\', \'{project_name}\', (SELECT start_date FROM Projects WHERE event_name = \"{project_name}\" AND YEAR(start_date) = \'{project_year}\'), \'{project_role}\')"
-                    insert_query = cur.execute(insert_query)
+                    insert_query=cur.execute(insert_query)
                     mysql.connection.commit()
 
             return redirect('/admin/team')
 
         elif (request.form['signal'] == 'delete'):
-            employee_id = request.form['employee_id']
-            delete_query = f"DELETE FROM Teams WHERE employee_id = \'{employee_id}\'"
-            delete_query_exec = cur.execute(delete_query)
+            employee_id=request.form['employee_id']
+            delete_query=f"DELETE FROM Teams WHERE employee_id = \'{employee_id}\'"
+            delete_query_exec=cur.execute(delete_query)
 
             mysql.connection.commit()
 

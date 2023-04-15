@@ -62,11 +62,12 @@ collection int default null,
 total_expense int not null
 );
 
+
 CREATE TABLE ProjectPhotos (
   id INT AUTO_INCREMENT PRIMARY KEY,
   project_event_name VARCHAR(50),
   project_start_date DATE,
-  photo_url longblob NOT NULL,
+  photo_url longblob default NULL,
   caption VARCHAR(255) DEFAULT NULL,
   FOREIGN KEY (project_event_name, project_start_date)
 	REFERENCES Projects(event_name, start_date)
@@ -290,27 +291,18 @@ INSERT INTO Projects (event_name, start_date, types, budget, no_of_participants,
 ('Project I', '2022-09-01', 'Webinar', 100000, 200, 1, null, 80000),
 ('Project J', '2022-10-01', 'Symposium', 700000, 150, 8, 800000, 600000);
 
+
 #Adding dummy values to ProjectPhotos
-INSERT INTO ProjectPhotos (project_event_name, project_start_date, photo_url, caption) 
-VALUES 
-  ('Project A', '2022-01-01', 'https://example.com/photo1.jpg', 'Conference photo 1'),
-  ('Project A', '2022-01-01', 'https://example.com/photo2.jpg', 'Conference photo 2'),
-  ('Project B', '2022-02-01', 'https://example.com/photo3.jpg', 'Workshop photo 1'),
-  ('Project C', '2022-03-01', 'https://example.com/photo4.jpg', NULL),
-  ('Project D', '2022-04-01', 'https://example.com/photo5.jpg', 'Exhibition photo 1'),
-  ('Project E', '2022-05-01', 'https://example.com/photo6.jpg', NULL),
-  ('Project F', '2022-06-01', 'https://example.com/photo7.jpg', 'Training photo 1'),
-  ('Project G', '2022-07-01', 'https://example.com/photo8.jpg', NULL),
-  ('Project H', '2022-08-01', 'https://example.com/photo9.jpg', 'Expo photo 1'),
-  ('Project I', '2022-09-01', 'https://example.com/photo10.jpg', NULL);
-  
-  
-INSERT INTO ProjectPhotos (project_event_name, project_start_date, photo_url, caption)
-VALUES
-    ('Project A', '2022-01-01', 'E:/6th Sem/OneDrive - iitgn.ac.in/6th Sem/dbms/Assignment2/image2.jpg', 'Photo of project A'),
-    ('Project A', '2022-01-01', 'E:/6th Sem/OneDrive - iitgn.ac.in/6th Sem/dbms/Assignment2/image1.jpg', 'Another photo of project A'),
-    ('Project B', '2022-02-01', 'E:/6th Sem/OneDrive - iitgn.ac.in/6th Sem/dbms/Assignment2/image2.jpg', 'Photo of project B'),
-    ('Project B', '2022-02-01', 'E:/6th Sem/OneDrive - iitgn.ac.in/6th Sem/dbms/Assignment2/image1.jpg', NULL);
+-- delete from projectphotos; 
+-- INSERT INTO ProjectPhotos (project_event_name, project_start_date, photo_url, caption) 
+-- VALUES 
+   
+-- INSERT INTO ProjectPhotos (project_event_name, project_start_date, photo_url, caption)
+-- VALUES
+--     ('Project A', '2022-01-01', NULL, 'Photo of project A'),
+--     ('Project A', '2022-01-01', NULL, 'Another photo of project A'),
+--     ('Project B', '2022-02-01', NULL, 'Photo of project B'),
+--     ('Project B', '2022-02-01', NULL, NULL);
 
 
 #Adding dummy values to Volunteers
